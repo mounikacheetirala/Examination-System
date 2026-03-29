@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Programming Exam</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1e1e1e; color: #d4d4d4; }
+        .exam-container { display: flex; height: 100vh; }
+        .questions-panel { width: 350px; background: #252526; border-right: 1px solid #3e3e42; overflow-y: auto; padding: 20px; }
+        .editor-panel { flex: 1; display: flex; flex-direction: column; }
+        .question-tab { background: #2d2d30; padding: 15px; margin-bottom: 10px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.3s; }
+        .question-tab:hover { background: #3e3e42; transform: translateX(5px); }
+        .question-tab.active { border-color: #0e639c; background: #1e1e1e; }
+        .exam-header { background: #2d2d30; padding: 15px 20px; border-bottom: 1px solid #3e3e42; display: flex; justify-content: space-between; align-items: center; }
+        .timer { font-size: 32px; font-weight: bold; color: #4ec9b0; font-family: monospace; }
+        .timer.warning { color: #f85149; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        .submit-btn { background: #2ea043; padding: 10px 24px; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: bold; margin-left: 15px; }
+        .question-detail { background: #252526; padding: 20px; border-bottom: 1px solid #3e3e42; max-height: 250px; overflow-y: auto; }
+        .test-cases { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        .test-case { background: #2d2d30; padding: 10px; margin: 8px 0; border-radius: 6px; font-family: monospace; }
+        .editor-toolbar { padding: 10px 15px; background: #2d2d30; border-bottom: 1px solid #3e3e42; display: flex; gap: 10px; flex-wrap: wrap; }
+        #editor { flex: 1; min-height: 0; }
+        .output-area { background: #252526; padding: 15px; border-top: 1px solid #3e3e42; max-height: 200px; overflow-y: auto; }
+        #output-content { background: #1e1e1e; padding: 12px; border-radius: 4px; margin-top: 8px; font-family: monospace; white-space: pre-wrap; }
+        button, select { background: #3c3c3c; border: none; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #4e4e52; }
+        .auth-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #1e1e1e; }
+        .auth-card { background: #2d2d30; padding: 40px; border-radius: 12px; width: 450px; text-align: center; }
+        .auth-card input { width: 100%; padding: 12px; margin: 10px 0; background: #3c3c3c; border: 1px solid #3e3e42; color: white; border-radius: 6px; }
+        .results-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 10000; }
+        .results-content { background: #2d2d30; padding: 40px; border-radius: 12px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .score { font-size: 48px; color: #4ec9b0; margin: 20px; text-align: center; }
+        .progress-bar { width: 100%; height: 30px; background: #1e1e1e; border-radius: 15px; overflow: hidden; margin: 20px 0; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #2ea043, #4ec9b0); transition: width 0.5s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+        .result-item { background: #1e1e1e; padding: 12px; margin: 10px 0; border-radius: 6px; }
+        .result-item.correct { border-left: 4px solid #2ea043; }
+        .result-item.wrong { border-left: 4px solid #f85149; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        .close-result-btn { background: #0e639c; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 20px; width: 100%; }
+        .close-result-btn:hover { background: #1177bb; }
+        .new-exam-btn { background: #2ea043; margin-top: 10px; }
+        .new-exam-btn:hover { background: #3fb950; }
+    </style>
+</head>
+<body>
+    <div id="app">Loading...</div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
+    <script>
+        let editor = null;
+        let currentExam = null;
+        let currentStudentId = null;
+        let currentQuestionIndex = 0;
+        let timerInterval = null;
+        let answers = {};
+        let examStartTime = null;
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const examId = urlParams.get('id');
+        const API_URL = 'http://localhost:5001';
+        
+        if (!examId) {
+            document.getElementById('app').innerHTML = `<div class="auth-container"><div class="auth-card"><h2>❌ Invalid Exam Link</h2><button onclick="history.back()">Go Back</button></div></div>`;
+        } else {
+            renderAuthScreen();
+        }
+        
+        function renderAuthScreen() {
+            document.getElementById('app').innerHTML = `
+                <div class="auth-container">
+                    <div class="auth-card">
+                        <h2><i class="fas fa-graduation-cap"></i> Exam Portal</h2>
+                        <div id="exam-info" class="exam-info" style="background:#1e1e1e;padding:15px;border-radius:8px;margin-bottom:20px;">Loading...</div>
+                        <input type="text" id="student-name" placeholder="Full Name">
+                        <input type="text" id="student-rollno" placeholder="Roll Number">
+                        <input type="password" id="exam-password" placeholder="Exam Password">
+                        <button onclick="verifyAndStart()"><i class="fas fa-play"></i> Start Exam</button>
+                    </div>
+                </div>
+            `;
+            loadExamInfo();
+        }
+        
+        async function loadExamInfo() {
+            try {
+                const res = await fetch(`${API_URL}/api/exam/${examId}/info`);
+                const exam = await res.json();
+                document.getElementById('exam-info').innerHTML = `<strong>📚 ${exam.title}</strong><br>⏱️ Duration: ${exam.duration} minutes`;
+            } catch(e) { document.getElementById('exam-info').innerHTML = '❌ Exam not found'; }
+        }
+        
+        async function verifyAndStart() {
+            const name = document.getElementById('student-name').value.trim();
+            const roll = document.getElementById('student-rollno').value.trim();
+            const pwd = document.getElementById('exam-password').value;
+            if (!name || !roll || !pwd) { alert('Please fill all fields'); return; }
+            
+            try {
+                const res = await fetch(`${API_URL}/api/exam/verify`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ examId, password: pwd, studentName: name, studentRollNo: roll })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentStudentId = data.studentId;
+                    currentExam = data.exam;
+                    examStartTime = new Date(data.endTime);
+                    renderExamInterface();
+                    initMonaco();
+                    loadQuestion(0);
+                    startTimer(data.endTime);
+                } else { alert(data.error); }
+            } catch(e) { alert('Cannot connect to server'); }
+        }
+        
+        function renderExamInterface() {
+            document.getElementById('app').innerHTML = `
+                <div class="exam-container">
+                    <div class="questions-panel">
+                        <div style="background:#1e1e1e;padding:15px;margin-bottom:15px;border-radius:8px;">
+                            <i class="fas fa-user"></i> ${currentExam.title}<br><small>${currentStudentId.substring(0,8)}...</small>
+                        </div>
+                        <div id="questions-list"></div>
+                    </div>
+                    <div class="editor-panel">
+                        <div class="exam-header">
+                            <h2>${currentExam.title}</h2>
+                            <div style="display:flex;align-items:center;">
+                                <div class="timer" id="timer">00:00:00</div>
+                                <button class="submit-btn" onclick="submitExam()"><i class="fas fa-paper-plane"></i> Submit</button>
+                            </div>
+                        </div>
+                        <div id="question-detail" class="question-detail"></div>
+                        <div class="editor-toolbar">
+                            <select id="language-selector"><option value="python">Python</option><option value="javascript">JavaScript</option><option value="java">Java</option><option value="cpp">C++</option></select>
+                            <button onclick="runCode()"><i class="fas fa-play"></i> Run Code</button>
+                            <button onclick="saveAnswer()"><i class="fas fa-save"></i> Save</button>
+                            <div class="save-status" id="save-status"><i class="fas fa-check-circle"></i> Auto-save</div>
+                        </div>
+                        <div id="editor"></div>
+                        <div class="output-area" id="output-area" style="display:none;">
+                            <strong>Output:</strong>
+                            <pre id="output-content"></pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+            displayQuestionsList();
+        }
+        
+        function displayQuestionsList() {
+            const container = document.getElementById('questions-list');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let i = 0; i < currentExam.questions.length; i++) {
+                const q = currentExam.questions[i];
+                const isAnswered = answers[q.id] && answers[q.id].length > 10;
+                const div = document.createElement('div');
+                div.className = `question-tab ${currentQuestionIndex === i ? 'active' : ''}`;
+                div.onclick = () => loadQuestion(i);
+                div.innerHTML = `<div class="question-title">Q${i+1}. ${q.title}</div><div class="question-marks">📝 ${q.marks} marks</div><div class="question-status ${isAnswered ? 'answered' : ''}">${isAnswered ? '✅ Answered' : '⭕ Not answered'}</div>`;
+                container.appendChild(div);
+            }
+        }
+        
+        function loadQuestion(index) {
+            currentQuestionIndex = index;
+            const q = currentExam.questions[index];
+            document.querySelectorAll('.question-tab').forEach((tab, i) => tab.classList.toggle('active', i === index));
+            
+            let testCasesHtml = '<div class="test-cases"><strong>Sample Test Cases:</strong>';
+            if (q.testCases && q.testCases.length) {
+                q.testCases.forEach(tc => { testCasesHtml += `<div class="test-case"><strong>Input:</strong> ${tc.input}<br><strong>Expected Output:</strong> ${tc.expectedOutput}</div>`; });
+            } else { testCasesHtml += '<p>No test cases provided</p>'; }
+            testCasesHtml += '</div>';
+            
+            document.getElementById('question-detail').innerHTML = `<h2>${q.title}</h2><p>${q.description}</p>${testCasesHtml}`;
+            if (answers[q.id]) { editor.setValue(answers[q.id]); }
+            else { editor.setValue(getTemplate(q)); }
+        }
+        
+        function getTemplate(q) {
+            const lang = document.getElementById('language-selector').value;
+            if (lang === 'python') return `# Question: ${q.title}\n\ndef solve(input_data):\n    # Your code here\n    return input_data\n\n# Test\nprint(solve("test"))`;
+            if (lang === 'javascript') return `// Question: ${q.title}\n\nfunction solve(input) {\n    // Your code here\n    return input;\n}\n\nconsole.log(solve("test"));`;
+            return `// Write your solution for ${q.title}`;
+        }
+        
+        async function runCode() {
+            const code = editor.getValue();
+            const lang = document.getElementById('language-selector').value;
+            const outputArea = document.getElementById('output-area');
+            const outputContent = document.getElementById('output-content');
+            outputArea.style.display = 'block';
+            outputContent.textContent = '⏳ Running...';
+            try {
+                const res = await fetch(`${API_URL}/api/execute-code`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, language: lang }) });
+                const data = await res.json();
+                outputContent.textContent = data.output || 'Execution completed';
+            } catch(e) { outputContent.textContent = 'Error: ' + e.message; }
+        }
+        
+        async function saveAnswer() {
+            const q = currentExam.questions[currentQuestionIndex];
+            const code = editor.getValue();
+            const lang = document.getElementById('language-selector').value;
+            answers[q.id] = code;
+            try {
+                await fetch(`${API_URL}/api/exam/save-answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: currentStudentId, questionId: q.id, code, language: lang }) });
+                displayQuestionsList();
+                const status = document.getElementById('save-status');
+                status.innerHTML = '<i class="fas fa-check-circle"></i> Saved!';
+                setTimeout(() => { if(status) status.innerHTML = '<i class="fas fa-check-circle"></i> Auto-save'; }, 2000);
+            } catch(e) { console.error('Save failed'); }
+        }
+        
+        async function submitExam() {
+            if (!confirm('Submit exam? You cannot change answers after submission.')) return;
+            await saveAnswer();
+            try {
+                const res = await fetch(`${API_URL}/api/exam/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ examId, studentId: currentStudentId }) });
+                const result = await res.json();
+                if (result.success) {
+                    clearInterval(timerInterval);
+                    showResults(result);
+                }
+            } catch(e) { alert('Error submitting exam'); }
+        }
+        
+        function showResults(result) {
+            const percentage = parseFloat(result.percentage);
+            const isPass = percentage >= 40;
+            const modal = document.createElement('div');
+            modal.className = 'results-modal';
+            modal.innerHTML = `
+                <div class="results-content">
+                    <h2 style="text-align:center;color:#4ec9b0;">🎉 Exam Submitted Successfully!</h2>
+                    <div class="score">${result.score} / ${result.totalMarks}</div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${percentage}%">${percentage}%</div></div>
+                    <div style="text-align:center;margin:20px 0;padding:15px;background:#1e1e1e;border-radius:8px;">
+                        <i class="fas ${isPass ? 'fa-check-circle' : 'fa-exclamation-circle'}" style="font-size:48px;color:${isPass ? '#2ea043' : '#f85149'};"></i>
+                        <h3 style="margin-top:10px;">${isPass ? 'Congratulations! You Passed!' : 'Better Luck Next Time!'}</h3>
+                    </div>
+                    <h3>Question-wise Results:</h3>
+                    ${result.results.map(r => `<div class="result-item ${r.score >= r.maxScore/2 ? 'correct' : 'wrong'}">
+                        <strong>${r.title}</strong><br>Score: ${r.score} / ${r.maxScore} (${((r.score/r.maxScore)*100).toFixed(0)}%)
+                    </div>`).join('')}
+                    <button class="close-result-btn" onclick="closeResultsModal()">
+                        <i class="fas fa-home"></i> Go to Home
+                    </button>
+                    <button class="close-result-btn new-exam-btn" onclick="location.reload()">
+                        <i class="fas fa-sync"></i> Take Another Exam
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        function closeResultsModal() {
+            const modal = document.querySelector('.results-modal');
+            if (modal) modal.remove();
+            window.location.href = '/';
+        }
+        
+        function startTimer(endTimeISO) {
+    // Clear any existing interval
+    if (timerInterval) clearInterval(timerInterval);
+    
+    // Parse the end time
+    const endDateTime = new Date(endTimeISO);
+    
+    function updateTimer() {
+        const now = new Date();
+        const diff = endDateTime - now;
+        
+        if (diff <= 0) {
+            clearInterval(timerInterval);
+            document.getElementById('timer').textContent = '00:00:00';
+            submitExam();
+            return;
+        }
+        
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        const timerDisplay = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        const timerElement = document.getElementById('timer');
+        if (timerElement) {
+            timerElement.textContent = timerDisplay;
+            if (minutes < 5 && hours === 0) {
+                timerElement.classList.add('warning');
+            }
+        }
+    }
+    
+    // Update immediately and then every second
+    updateTimer();
+    timerInterval = setInterval(updateTimer, 1000);
+}
+        
+        function initMonaco() {
+            require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+            require(['vs/editor/editor.main'], function() {
+                editor = monaco.editor.create(document.getElementById('editor'), {
+                    value: '# Write your code here...', language: 'python', theme: 'vs-dark',
+                    fontSize: 14, minimap: { enabled: false }, automaticLayout: true
+                });
+                setInterval(saveAnswer, 30000);
+            });
+        }
+        
+        // Add closeResultsModal to global scope
+        window.closeResultsModal = closeResultsModal;
+    </script>
+</body>
+</html>

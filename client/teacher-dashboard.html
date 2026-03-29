@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .card { background: #2d2d30; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 8px 0; background: #3c3c3c; border: 1px solid #3e3e42; color: white; border-radius: 4px; }
+        button { background: #0e639c; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .btn-success { background: #2ea043; }
+        .btn-danger { background: #f85149; }
+        .question-item { background: #1e1e1e; padding: 15px; margin: 15px 0; border-radius: 6px; }
+        .test-case { background: #252526; padding: 10px; margin: 10px 0; border-radius: 4px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .test-case input { flex: 1; margin: 0; }
+        .login-container { max-width: 400px; margin: 100px auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #3e3e42; }
+        th { background: #252526; }
+        .exam-list-item { background: #1e1e1e; padding: 15px; margin: 10px 0; border-radius: 6px; cursor: pointer; }
+        .exam-list-item:hover { background: #3e3e42; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1e1e1e; padding: 15px; border-radius: 6px; text-align: center; }
+        .stat-value { font-size: 28px; font-weight: bold; color: #4ec9b0; }
+        .tab { display: none; }
+        .tab.active { display: block; }
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn { background: #3e3e42; padding: 10px 20px; }
+        .tab-btn.active { background: #0e639c; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    
+    <script>
+        let teacherToken = null;
+        
+        function renderLogin() {
+            document.getElementById('app').innerHTML = `
+                <div class="login-container">
+                    <div class="card">
+                        <h2><i class="fas fa-chalkboard-teacher"></i> Teacher Login</h2>
+                        <input type="password" id="password" placeholder="Teacher Password">
+                        <button onclick="login()" class="btn-success">Login</button>
+                        <p style="margin-top:10px;font-size:12px;color:#858585;">Default password: teacher123</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function login() {
+            const password = document.getElementById('password').value;
+            const res = await fetch('http://localhost:5001/api/teacher/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json();
+            if (data.success) { teacherToken = data.token; renderDashboard(); loadExams(); }
+            else { alert('Invalid password'); }
+        }
+        
+        function renderDashboard() {
+            document.getElementById('app').innerHTML = `
+                <div class="container">
+                    <h1><i class="fas fa-chalkboard-teacher"></i> Teacher Dashboard</h1>
+                    <div class="tab-buttons">
+                        <button class="tab-btn active" onclick="showTab('create')">📝 Create Exam</button>
+                        <button class="tab-btn" onclick="showTab('exams')">📋 My Exams</button>
+                    </div>
+                    <div id="create-tab" class="tab active">
+                        <div class="card">
+                            <h2>Create New Exam</h2>
+                            <input type="text" id="exam-title" placeholder="Exam Title">
+                            <input type="number" id="exam-duration" placeholder="Duration (minutes)" value="60">
+                            <input type="text" id="exam-password" placeholder="Exam Password">
+                            <div id="questions-container">
+                                <h3>Questions</h3>
+                                <div class="question-item">
+                                    <input type="text" placeholder="Question Title" class="q-title">
+                                    <textarea placeholder="Question Description" class="q-description" rows="3"></textarea>
+                                    <input type="number" placeholder="Marks" class="q-marks" value="10">
+                                    <select class="q-difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select>
+                                    <div class="test-cases-container"></div>
+                                    <button onclick="addTestCase(this)">+ Add Test Case</button>
+                                </div>
+                            </div>
+                            <button onclick="addQuestion()">+ Add Question</button>
+                            <button onclick="createExam()" class="btn-success">Create Exam</button>
+                        </div>
+                    </div>
+                    <div id="exams-tab" class="tab">
+                        <div class="card">
+                            <h2>My Exams</h2>
+                            <div id="exams-list"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+            if (tabName === 'exams') loadExams();
+        }
+        
+        function addQuestion() {
+            const container = document.getElementById('questions-container');
+            const div = document.createElement('div');
+            div.className = 'question-item';
+            div.innerHTML = `
+                <input type="text" placeholder="Question Title" class="q-title">
+                <textarea placeholder="Question Description" class="q-description" rows="3"></textarea>
+                <input type="number" placeholder="Marks" class="q-marks" value="10">
+                <select class="q-difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select>
+                <div class="test-cases-container"></div>
+                <button onclick="addTestCase(this)">+ Add Test Case</button>
+                <button onclick="this.parentElement.remove()" class="btn-danger">Remove</button>
+            `;
+            container.appendChild(div);
+        }
+        
+        function addTestCase(btn) {
+            const container = btn.previousElementSibling;
+            const div = document.createElement('div');
+            div.className = 'test-case';
+            div.innerHTML = `<input placeholder="Input"><input placeholder="Expected Output"><button onclick="this.parentElement.remove()" class="btn-danger">✖</button>`;
+            container.appendChild(div);
+        }
+        
+        async function createExam() {
+            const title = document.getElementById('exam-title').value;
+            const duration = document.getElementById('exam-duration').value;
+            const examPassword = document.getElementById('exam-password').value;
+            if (!title || !examPassword) { alert('Enter title and password'); return; }
+            
+            const questions = [];
+            document.querySelectorAll('.question-item').forEach(div => {
+                const testCases = [];
+                div.querySelectorAll('.test-case').forEach(tc => {
+                    const inputs = tc.querySelectorAll('input');
+                    if (inputs[0]?.value && inputs[1]?.value) {
+                        testCases.push({ input: inputs[0].value, expectedOutput: inputs[1].value, description: 'Test case' });
+                    }
+                });
+                questions.push({
+                    title: div.querySelector('.q-title').value,
+                    description: div.querySelector('.q-description').value,
+                    marks: parseInt(div.querySelector('.q-marks').value),
+                    difficulty: div.querySelector('.q-difficulty').value,
+                    testCases
+                });
+            });
+            
+            const res = await fetch('http://localhost:5001/api/exam/create', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, duration, questions, examPassword, teacherToken })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`Exam Created!\n\nLink: ${data.examLink}\nPassword: ${examPassword}`);
+                document.getElementById('exam-title').value = '';
+                document.getElementById('exam-password').value = '';
+                loadExams();
+                showTab('exams');
+            } else { alert('Failed to create exam'); }
+        }
+        
+        async function loadExams() {
+            const res = await fetch('http://localhost:5001/api/teacher/exams');
+            const data = await res.json();
+            const container = document.getElementById('exams-list');
+            if (!container) return;
+            if (data.exams.length === 0) { container.innerHTML = '<p>No exams created yet.</p>'; return; }
+            
+            container.innerHTML = data.exams.map(exam => `
+                <div class="exam-list-item" onclick="viewExamResults('${exam.id}')">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div><strong>📚 ${exam.title}</strong><br><small>Created: ${new Date(exam.created_at).toLocaleDateString()}</small><br><small>Students: ${exam.student_count || 0}</small></div>
+                        <div><button class="btn-success" onclick="event.stopPropagation();copyLink('http://localhost:3001/exam.html?id=${exam.id}')">📋 Copy Link</button></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function viewExamResults(examId) {
+            const res = await fetch(`http://localhost:5001/api/exam/${examId}/results`);
+            const data = await res.json();
+            
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:10000;overflow-y:auto;display:flex;justify-content:center;align-items:center;';
+            modal.innerHTML = `
+                <div style="background:#2d2d30;padding:30px;border-radius:12px;max-width:90%;width:1000px;max-height:90%;overflow-y:auto;">
+                    <h2>${data.examTitle} - Results</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card"><div class="stat-value">${data.statistics.totalStudents}</div><div class="stat-label">Total Students</div></div>
+                        <div class="stat-card"><div class="stat-value">${data.statistics.submittedCount}</div><div class="stat-label">Submitted</div></div>
+                        <div class="stat-card"><div class="stat-value">${data.statistics.averageScore.toFixed(1)}</div><div class="stat-label">Average Score</div></div>
+                        <div class="stat-card"><div class="stat-value">${data.statistics.highestScore}</div><div class="stat-label">Highest Score</div></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Name</th><th>Roll No</th><th>Score</th><th>Status</th><th>Submitted At</th></tr></thead>
+                        <tbody>${data.students.map(s => `<tr><td>${s.name}</td><td>${s.roll_no}</td><td>${s.submitted ? s.total_score : 'Pending'}</td><td>${s.submitted ? '✅ Submitted' : '⏳ In Progress'}</td><td>${s.submitted_at ? new Date(s.submitted_at).toLocaleString() : '-'}</td></tr>`).join('')}</tbody>
+                    </table>
+                    <button onclick="this.parentElement.parentElement.remove()" style="margin-top:20px;">Close</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        function copyLink(link) { navigator.clipboard.writeText(link); alert('Link copied!'); }
+        
+        renderLogin();
+    </script>
+</body>
+</html>
